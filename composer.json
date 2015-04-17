@@ -1,0 +1,34 @@
+{
+  "name": "jjharr/can",
+  "description": "Powerful, lightweight roles and permissions for Laravel 5",
+  "keywords": ["laravel", "roles", "permissions", "auth", "security", "harr"],
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Josh Harr",
+      "email": "joshua.harr@gmail.com"
+    }
+  ],
+  "require": {
+    "php": ">=5.4.0",
+    "illuminate/support": "5.0.x",
+    "illuminate/console": "5.0.x",
+    "illuminate/database": "5.0.x"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "~4.1",
+    "mockery/mockery": "dev-master"
+  },
+  "suggest": {
+  },
+  "autoload": {
+    "psr-4": {
+      "jjharr\\can\\": "src/Can"
+    }
+  },
+  "extra": {
+    "branch-alias": {
+      "dev-master": "1.0-dev"
+    }
+  }
+}
