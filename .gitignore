@@ -1,2 +1,4 @@
 .idea/
 Can.iml
+vendor/
+composer.lock
