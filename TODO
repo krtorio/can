@@ -1,0 +1,16 @@
+- Gracefully handle user deletion using Eloquent event or Blueprint
+--> $table->foreign('user_id')->references('{{ $userKeyName }}')->on('{{ $usersTable }}')->onDelete('cascade')
+
+- Command(s) to set and update roles,permissions from config file
+
+- Blade extensions: is, can
+
+- route protection 'is/can' => 'xx' on routes
+
+- scopeRole @see rombican/roles
+
+- add config file
+
+- middleware? @see entrust,kodeine
+
+- Readme.md
