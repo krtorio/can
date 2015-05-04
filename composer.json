@@ -24,7 +24,7 @@
   },
   "autoload": {
     "psr-4": {
-      "jjharr\\can\\": "src/Can"
+      "jjharr\\Can\\": "src/Can"
     }
   },
   "extra": {
