@@ -5,7 +5,7 @@ namespace Can\commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 
-class MigrationsCommand extends Command {
+class CanMigrationsCommand extends Command {
 
 	protected $name = 'can:migration';
 
