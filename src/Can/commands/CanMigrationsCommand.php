@@ -49,7 +49,7 @@ class CanMigrationsCommand extends Command {
 	{
 		$filename = base_path("/database/migrations")."/".date('Y_m_d_His')."_create_can_tables.php";
 
-		$output = $this->laravel->view->make('can::Views.migration')
+		$output = $this->laravel->view->make('jjharr\\Can::Views.migration')
 			->with($this->params())
 			->render();
 
