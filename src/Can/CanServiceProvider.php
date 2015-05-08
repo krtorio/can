@@ -39,20 +39,7 @@ class CanServiceProvider extends ServiceProvider
 	 */
 	public function register()
 	{
-		//$this->registerCan();
 		$this->registerCommands();
-	}
-
-	/**
-	 * Register the application bindings.
-	 *
-	 * @return void
-	 */
-	private function registerCan()
-	{
-		//$this->app->bind('can', function ($app) {
-		//	return new Can($app);
-		//});
 	}
 
 	/**
