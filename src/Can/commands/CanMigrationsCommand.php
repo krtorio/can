@@ -4,6 +4,7 @@ namespace jjharr\Can\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Log;
 
 class CanMigrationsCommand extends Command {
 
@@ -13,7 +14,7 @@ class CanMigrationsCommand extends Command {
 
 	public function fire()
 	{
-		$this->laravel->view->addNamespace('can', substr(__DIR__, 0, -8).'views');
+		$this->laravel->view->addNamespace('jjharr\\Can', substr(__DIR__, 0, -8).'Views');
 
 		$this->line('');
 		$this->info('Attempting to create Can migration tables ...');
@@ -48,7 +49,7 @@ class CanMigrationsCommand extends Command {
 	{
 		$filename = base_path("/database/migrations")."/".date('Y_m_d_His')."_create_can_tables.php";
 
-		$output = $this->laravel->view->make('can::migrations')
+		$output = $this->laravel->view->make('can::Views.migration')
 			->with($this->params())
 			->render();
 

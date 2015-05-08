@@ -41,7 +41,6 @@ class CanServiceProvider extends ServiceProvider
 	{
 		//$this->registerCan();
 		$this->registerCommands();
-		$this->mergeConfig();
 	}
 
 	/**
@@ -66,18 +65,6 @@ class CanServiceProvider extends ServiceProvider
 		$this->app->bindShared('command.can.migration', function ($app) {
 			return new CanMigrationsCommand();
 		});
-	}
-
-	/**
-	 * Merges Can config
-	 *
-	 * @return void
-	 */
-	private function mergeConfig()
-	{
-		$this->mergeConfigFrom(
-			__DIR__.'/Config/can.php', 'can'
-		);
 	}
 
 	/**
