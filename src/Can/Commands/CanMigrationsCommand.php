@@ -47,10 +47,17 @@ class CanMigrationsCommand extends Command {
 	{
 		$filename = base_path("/database/migrations")."/".date('Y_m_d_His')."_create_can_tables.php";
 
+		/*
 		$this->laravel->view->addNamespace('jjharr\\Can', substr(__DIR__, 0, -8).'views');
 		$output = $this->laravel->view->make('jjharr\\Can::generators.migration')
 			->with($this->params())
 			->render();
+		*/
+
+		extract($this->params());
+		Log::info('roleTable: '.print_r($roleTable, true));
+		$output = include __DIR__ . '../resources/migration.php';
+		Log::info('output: '.print_r($output, true));
 
 		if (file_exists($filename)) {
 			throw new \Exception('Migration file already exists');
