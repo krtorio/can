@@ -97,7 +97,6 @@ trait RolesAndPermissionsHelper {
 
 	protected static function createBulk(array $items)
 	{
-		Log::info('createBulk, items is is '.print_r($items, true));
 		DB::table(self::$table)->insert($items);
 
 		$inserted = DB::table(self::$table)

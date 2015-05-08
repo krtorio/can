@@ -97,7 +97,7 @@ trait Can {
 
 		// insert role relationship, composite key ensures exception for duplicate slug/id pairs
 		try {
-			DB::table('pivot_users_roles')->insert([
+			DB::table(Config::get('can.user_role_table'))->insert([
 				'roles_slug' => $roleSlug,
 				'user_id' => $this->id,
 				'created_at' => $timeStr,
@@ -125,7 +125,7 @@ trait Can {
 	protected function addPermissionsForRole(Role $role, $timeStr)
 	{
 		// only insert permissions that the user doesn't already have.
-		$currentPermissions = $this->getUserPermissions();
+		$currentPermissions = $this->getPermissions();
 		$rolePermissions = $role->getPermissions();
 		$newPermissions = array_diff($rolePermissions, $currentPermissions);
 
@@ -140,7 +140,7 @@ trait Can {
 			];
 		}
 
-		DB::table('pivot_users_permissions')->insert($permData);
+		DB::table(Config::get('can.user_permission_table'))->insert($permData);
 	}
 
 	public function detachRole($roleSlug)
@@ -189,13 +189,13 @@ trait Can {
 		}
 
 		// 3) remove the role pivot entry
-		DB::table('pivot_users_roles')
+		DB::table(Config::get('can.user_role_table'))
 			->where('user_id', $this->id)
 			->where('roles_slug', $roleSlug)
 			->delete();
 
 		// 4) get all the permission slugs for those roles
-		$rolePermissions = DB::table('pivot_roles_permissions')
+		$rolePermissions = DB::table(Config::get('can.role_permission_table'))
 			->whereIn('roles_slug', $allRoleSlugs)
 			->get('permissions_slug', 'roles_slug');
 
@@ -221,7 +221,7 @@ trait Can {
 		if(count($targetRolePerms) > 0)
 		{
 			$first = array_shift($targetRolePerms);
-			$query = DB::table('pivot_users_permissions')->where('user_id', $this->id)->where('permissions_slug',$first);
+			$query = DB::table(Config::get('can.user_permission_table'))->where('user_id', $this->id)->where('permissions_slug',$first);
 			foreach($targetRolePerms as $perm)
 			{
 				$slug = $perm->permissions_slug;
@@ -248,11 +248,11 @@ trait Can {
 	 */
 	public function attachPermission($permissionSlug)
 	{
-		$exists = DB::table('permissions')->where('slug', $permissionSlug)->count();
+		$exists = DB::table(Config::get('can.permission_table'))->where('slug', $permissionSlug)->count();
 
 		if(count($exists))
 		{
-			DB::table('pivot_users_permissions')->insert([
+			DB::table(Config::get('can.user_permission_table'))->insert([
 				'user_id' => $this->id,
 				'permissions_slug' => $permissionSlug,
 				'added_on_user' => 1
@@ -265,7 +265,7 @@ trait Can {
 
 	public function detachPermission($permissionSlug)
 	{
-		$affected = DB::table('pivot_users_permissions')
+		$affected = DB::table(Config::get('can.user_permission_table'))
 			->where('user_id', $this->id)
 			->where('permissions_slug', $permissionSlug)
 			->where('added_on_user', 1)
@@ -276,7 +276,7 @@ trait Can {
 
 	public function is($roles)
 	{
-		$query = DB::table('pivot_users_roles')->where('user_id', $this->id);
+		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id);
 
 		$container = new SlugContainer($roles);
 		$query = $container->buildSlugQuery($query, 'roles_slug');
@@ -288,7 +288,7 @@ trait Can {
 
 	public function can($permissions)
 	{
-		$query = DB::table('join_user_permissions')->where('user_id',$this->id);
+		$query = DB::table(Config::get('can.user_permission_table'))->where('user_id',$this->id);
 
 		$container = new SlugContainer($permissions);
 		$query = $container->buildSlugQuery($query, 'permissions_slug');
@@ -297,18 +297,22 @@ trait Can {
 		return count($hits) > 0;
 	}
 
-	public function also(callable $cb, $params, $message='')
-	{
-		// TODO
-	}
-
 	public function getRoles()
 	{
-		$userId = $this->id;
-		$raw = DB::table('roles')
-			->join('pivot_users_roles', function($query) use($userId) {
-				$query->on('roles.slug', '=', 'pivot_users_roles.slug')
-					->where('pivot_users_roles.user_id', '=', $userId);
+		$roleTable = Config::get('can.role_table');
+		$userRoleTable = Config::get('can.user_role_table');
+
+		$queryParams = [
+			'joinKeyFirst' => $roleTable.'.slug',
+			'joinKeySecond' => $userRoleTable.'.slug',
+			'userIdKey' => $userRoleTable.'.user_id',
+			'userId' => $this->id,
+		];
+
+		$raw = DB::table($roleTable)
+			->join($userRoleTable, function($query) use($queryParams) {
+				$query->on($queryParams['joinKeyFirst'], '=', $queryParams['joinKeySecond'])
+					->where($queryParams['userIdKey'], '=', $queryParams['userId']);
 			})
 			->get();
 
@@ -321,16 +325,25 @@ trait Can {
 		return $roles;
 	}
 
-	public function getUserPermissions()
+	public function getPermissions()
 	{
-		$userId = $this->id;
-		$data = DB::table('permissions')
-			->join('pivot_users_permissions','permissions.slug','=','pivot_users_permissions.permissions_slug')
-			//->join('pivot_users_permissions', function($query) use($userId) {
+		$permissionTable = Config::get('can.permission_table');
+		$userPermissionTable = Config::get('can.user_permission_table');
+
+		$queryParams = [
+			'joinKeyFirst' => $permissionTable.'.slug',
+			'joinKeySecond' => $userPermissionTable.'.permissions_slug',
+			'userIdKey' => $userPermissionTable.'.user_id',
+			'userId' => $this->id,
+		];
+
+		$data = DB::table($permissionTable)
+			->join($userPermissionTable,$queryParams['joinKeyFirst'],'=',$queryParams['joinKeySecond'])
+			//->join('pivot_users_permissions', function($query) use($queryParams) {
 			//	$query->on('permissions.slug', '=', 'pivot_users_permissions.slug')
 			//		->where('pivot_users_permissions.user_id', '=', $userId);
 			//})
-			->where('pivot_users_permissions.user_id',$this->id)
+			->where($queryParams['userIdKey'],$queryParams['userId'])
 			->get();
 
 		$permissions = [];

@@ -29,15 +29,15 @@ class Permission {
 	public static function remove($permissionSlug)
 	{
 		// todo - allow multiple slugs per call
-		$count = DB::table('permissions')
+		$count = DB::table(Config::get('can.permission_table'))
 			->where('slug', $permissionSlug)
 			->delete();
 
-		DB::table('pivot_roles_permissions')
+		DB::table(Config::get('can.role_permission_table'))
 			->where('permissions_slug', $permissionSlug)
 			->delete();
 
-		DB::table('pivot_users_permissions')
+		DB::table(Config::get('can.user_permission_table'))
 			->where('permissions_slug', $permissionSlug)
 			->delete();
 
@@ -46,7 +46,7 @@ class Permission {
 
 	protected function userIds()
 	{
-		return DB::table('pivot_users_permissions')
+		return DB::table(Config::get('can.user_permission_table'))
 			->whereIn('permissions_slug',$this->slug)
 			->get('user_id');
 	}

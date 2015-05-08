@@ -48,7 +48,7 @@ class Role {
 
 		// fails on duplicate entry
 		try{
-			DB::table('pivot_roles_permissions')->insert($data);
+			DB::table(Config::get('can.role_permission_table'))->insert($data);
 		} catch(\Exception $e) {
 			return false;
 		}
@@ -64,7 +64,7 @@ class Role {
 		$userIds = $this->userIds();
 
 		// and get all the permissions for those users
-		$existingPerms = DB::table('pivot_users_permissions')
+		$existingPerms = DB::table(Config::get('can.user_permission_table'))
 			->whereIn('user_id', $userIds)
 			->get();
 
@@ -91,7 +91,7 @@ class Role {
 			}
 		}
 
-		DB::table('pivot_users_permissions')->insert($newInserts);
+		DB::table(Config::get('can.user_permission_table'))->insert($newInserts);
 	}
 
 	protected function updateRemovePermissionsForRole(array $permissionSlugs)
@@ -105,7 +105,7 @@ class Role {
 
 		// 2) find out if there are other roles with overlapping permissions. It's faster
 		// to just suck up everything and post-process than it is to use a sub-select for MySQL < 6.0
-		$allPermissions = DB::table('pivot_roles_permissions')->get();
+		$allPermissions = DB::table(Config::get('can.role_permission_table'))->get();
 		$thisRolePermissions = array_filter($allPermissions, function($value) {
 			return $value['slug'] == $this->slug;
 		});
@@ -154,7 +154,7 @@ class Role {
 		// also have these other roles
 		if(count($overlappingRolePermMap) > 0)
 		{
-			$overlappingUsersRoles = DB::table('pivot_users_roles')
+			$overlappingUsersRoles = DB::table(Config::get('can.user_role_table'))
 				->whereIn('roles_slug', array_keys($overlappingRolePermMap))
 				->get();
 
@@ -202,7 +202,7 @@ class Role {
 		// delete where in this roles permissions, after removing exceptions. Exceptions
 		// happen when a user has one or more other roles with with overlapping positions
 		$first = array_shift($deleteme);
-		$query = DB::table('pivot_users_permissions')
+		$query = DB::table(Config::get('can.user_permission_table'))
 			->whereIn('user_id',$first['user_ids'])->whereIn('permissions_slug', $first['permissions']);
 
 		foreach($deleteme as $set)
@@ -212,23 +212,28 @@ class Role {
 					->whereIn('permissions_slug', $set['permissions']);
 			});
 		}
-		Log::info("updateRemovePermissionsForRole, sql is '".$query->toSql()."'");
 
 		$query->delete();
 	}
 
 	protected function userIds()
 	{
-		return DB::table('pivot_users_roles')
+		return DB::table(Config::get('can.user_role_table'))
 			->whereIn('roles_slug',[$this->slug])
 			->get(['user_id']);
 	}
 
 	public function permissions()
 	{
+		$permissionTable = Config::get('can.permission_table');
+		$rolePermissionTable = Config::get('can.role_permission_table');
+		$joinKeyFirst = $permissionTable.'.slug';
+		$joinKeySecond = $rolePermissionTable.'.permissions_slug';
+		$roleSlug = $rolePermissionTable.'.roles_slug';
+
 		$raw = DB::table('permissions')
-			->join('pivot_roles_permissions', 'permissions.slug', '=', 'pivot_roles_permissions.permissions_slug')
-			->where('pivot_roles_permissions.roles_slug',$this->slug)
+			->join($rolePermissionTable, $joinKeyFirst, '=', $joinKeySecond)
+			->where($roleSlug,$this->slug)
 			->get();
 
 		$permissions = [];
@@ -259,7 +264,7 @@ class Role {
 		$first = array_shift($permissionSlugs);
 		SlugContainer::validateOrDie($first, 'slug', 'The Permission slug');
 
-		$query = DB::table('pivot_roles_permissions')
+		$query = DB::table(Config::get('can.role_permission_table'))
 			->where('roles_slug', $this->slug)
 			->where('permissions_slug', $first);
 
@@ -291,23 +296,23 @@ class Role {
 	 */
 	public static function removeAll()
 	{
-		DB::table('roles')->truncate();
-		DB::table('permissions')->truncate();
-		DB::table('pivot_users_roles')->truncate();
-		DB::table('pivot_roles_permissions')->truncate();
-		DB::table('pivot_users_permissions')->truncate();
+		DB::table(Config::get('can.role_table'))->truncate();
+		DB::table(Config::get('can.permission_table'))->truncate();
+		DB::table(Config::get('can.user_role_table'))->truncate();
+		DB::table(Config::get('can.role_permission_table'))->truncate();
+		DB::table(Config::get('can.user_permission_table'))->truncate();
 	}
 
 	// FIXME - this is incomplete and broken
 	public static function remove($roleSlugToDelete, $reassignmentRole=null)
 	{
-		$userIds = DB::table('pivot_users_roles')
+		$userIds = DB::table(Config::get('can.user_role_table'))
 			->where('roles_slug', $roleSlugToDelete)
 			->get();
 
 		if($reassignmentRole && count($userIds) > 0)
 		{
-			$newRoleExists = DB::table('roles')
+			$newRoleExists = DB::table(Config::get('can.role_table'))
 				->where('slug', $reassignmentRole)
 				->count();
 
@@ -316,12 +321,12 @@ class Role {
 				throw new CanException("Role: Cannot reassign role. Role '$reassignmentRole' does not exist");
 			}
 
-			DB::table('pivot_users_roles')
+			DB::table(Config::get('can.user_role_table'))
 				->where('slug', $roleSlugToDelete)
 				->update('slug', $reassignmentRole);
 
 			// update permissions table
-			$oldPermissions = DB::table('pivot_roles_permissions')
+			$oldPermissions = DB::table(Config::get('can.role_permission_table'))
 				->where('permissions_slug', $roleSlugToDelete)
 				->get();
 
@@ -329,11 +334,11 @@ class Role {
 			// want to delete the role, which means a way harder calculation
 			// with overlapping roles like we've done before. Try to reuse that
 			// code
-			DB::table('pivot_users_permissions')
+			DB::table(Config::get('can.user_permission_table'))
 				->whereIn('permissions_slug', $oldPermissions)
 				->delete();
 
-			$newPermissions = DB::table('pivot_roles_permissions')
+			$newPermissions = DB::table(Config::get('can.role_permission_table'))
 				->where('permissions_slug', $reassignmentRole)
 				->get();
 
@@ -368,7 +373,7 @@ class Role {
 
 	public function hasPermission($permissionSlug)
 	{
-		$query = DB::table('pivot_roles_permissions')
+		$query = DB::table(Config::get('can.role_permission_table'))
 			->where('roles_slug', $this->slug);
 
 		// do this even though we have one permission to get proper wildcard behavior
@@ -382,9 +387,15 @@ class Role {
 
 	public function getPermissions()
 	{
-		$values = DB::table('permissions')
-			->join('pivot_roles_permissions','permissions.slug', '=', 'pivot_roles_permissions.permissions_slug')
-			->where('pivot_roles_permissions.roles_slug',$this->slug)
+		$permissionTable = Config::get('can.permission_table');
+		$rolePermissionTable = Config::get('can.role_permission_table');
+		$joinKeyFirst = $permissionTable.'.slug';
+		$joinKeySecond = $rolePermissionTable.'permissions_slug';
+		$roleSlug = $rolePermissionTable.'roles_slug';
+
+		$values = DB::table($permissionTable)
+			->join($rolePermissionTable,$joinKeyFirst, '=', $joinKeySecond)
+			->where($roleSlug,$this->slug)
 			->get(['permissions.*']);
 
 		$permissions = [];

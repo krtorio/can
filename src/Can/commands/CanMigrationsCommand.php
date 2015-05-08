@@ -1,6 +1,6 @@
 <?php
 
-namespace Can\commands;
+namespace Can\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
@@ -34,12 +34,11 @@ class CanMigrationsCommand extends Command {
 		$userPrimaryKey = (new $userModel())->getKeyName();
 
 		return [
-			'rolesTable' => Config::get('can.roles_table'),
-			'permissionsTable' => Config::get('can.permissions_table'),
-			'usersRolesTable' => Config::get('can.users_roles_table'),
-			'rolesPermissionsTable' => Config::get('can.roles_permissions_table'),
-			'usersPermissionsTable' => Config::get('can.users_permissions_table'),
-			'userTable' => Config::get('auth.table'),
+			'roleTable'          => Config::get('can.role_table'),
+			'permissionTable'    => Config::get('can.permission_table'),
+			'rolePermissionTable' => Config::get('can.role_permission_table'),
+			'userRoleTable'       => Config::get('can.user_role_table'),
+			'userPermissionTable' => Config::get('can.user_permission_table'),
 			'userModel' => $userModel,
 			'userPrimaryKey' => $userPrimaryKey
 		];
