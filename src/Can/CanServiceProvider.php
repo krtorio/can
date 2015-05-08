@@ -2,9 +2,9 @@
 /**
  *
  * @license MIT
- * @package jjharr\Can
+ * @package Can
  */
-use Can\commands\CanMigrationsCommand;
+use jjharr\Can\Commands\CanMigrationsCommand;
 use Illuminate\Support\ServiceProvider;
 
 class CanServiceProvider extends ServiceProvider
