@@ -2,73 +2,6 @@
 
 namespace jjharr\Can;
 
-/*
- * how to use this whole freaking system :
- *
- * PERMISSIONS
- * - create permissions using a seeder or artisan like
- * Permission::create([ ... ]);
- *
- * we should do this as resource based or not?
- * yes :
- * Call this a Resource, then slugs are permissions for it
- * Resource slugs must be unique
- * We only store slug,display,id though. It's implicit that the first part of the dot notation
- * of the slug is the resource. Or maybe we store resource and only path after that?
- *
- * User interface is :
- * 1) can('post.edit', $tests, Permission:Bool|Permission:Detail)
- * 2) can('post.edit.description,post.edit.title', $tests); // AND
- * 3) can('post.edit.author|post.publish', $tests); // OR
- * 4) can('post.edit.*', $tests); // can edit anything
- *
- * 2nd arg of can could get ugly
- * or can(...)->and(callable, error msg)? // prettier, can't get array of results back from this
- * could add something like permission error? Do this.
- *
- * addPerm(and syntax only)
- * detachPerm(and syntax only)
- *
- * creation:
- * artisan individually
- * or in seeder: PermissionResource
- *
- * ROLES
- *
- * looks like :
- * is('x|y');
- * is('x,y');
- *
- * attachRole(and syntax only)
- * detachRole(and syntax only)
- *
- * MODELS
- *
- * if they extend our eloquent model with our magic call, then they could expand
- * their model permissions to stuff like :
- * Post->canEditAuthor()
- *
- * they would have to define a protected static $permission = 'post' or whatever
- *
- * SCOPE
- * part of user trait, calling roles(xxx) will limit a query to those having a certain role
- *
- * EXCEPTIONS
- * have a custom exception CantException (or more boring, UnauthorizedException)
- *
- * DELETE
- * - Deleting a permission should delete it from all roles?
- * - removing a user should delete the join table entries to their roles
- *
- * BLADE
- * - @role, @endrole
- * -@can, @endcan, @else (@cant?)
- *
- * ARTISAN
- *
- * can:addPerm, can:removePerm, can:add/removeRole,
- */
-
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -85,8 +18,6 @@ trait Can {
 	 */
 	public function attachRole($roleSlug)
 	{
-		SlugContainer::validateOrDie($roleSlug, 'slug');
-
 		$role = Role::single($roleSlug);
 		if(empty($role))
 		{
@@ -114,7 +45,6 @@ trait Can {
 		return $role;
 	}
 
-
 	/**
 	 * After adding role, add permissions for that role to the user/permissions
 	 * table to make can() a faster call.
@@ -124,57 +54,34 @@ trait Can {
 	 */
 	protected function addPermissionsForRole(Role $role, $timeStr)
 	{
-		// only insert permissions that the user doesn't already have.
 		$currentPermissions = $this->getPermissions();
 		$rolePermissions = $role->getPermissions();
 		$newPermissions = array_diff($rolePermissions, $currentPermissions);
 
-		$permData =[];
-		foreach($newPermissions as $p)
-		{
-			$permData[] = [
-				'permissions_slug' => $p->slug,
+		$permData = array_map(function($v) use ($timeStr) {
+			return [
+				'permissions_slug' => $v->slug,
 				'user_id' => $this->id,
 				'created_at' => $timeStr,
 				'updated_at' => $timeStr
 			];
-		}
+		}, $newPermissions);
 
 		DB::table(Config::get('can.user_permission_table'))->insert($permData);
 	}
 
 	public function detachRole($roleSlug)
 	{
-		/*
-		 * The detachRole problem : how to know whether removing a role should also
-		 * remove permissions for that role?
-		 *
-		 * case 1) user has 2 roles with overlapping permissions. How to know when to
-		 * delete the permission? Answer: look up all the user's roles to see if there
-		 * are multiple references to the permission.
-		 *
-		 * case 2) user-added permissions. This is harder. Probably need a separate
-		 * column to track user-added permissions. if true, the permission can only
-		 * be removed by detachPermission.
-		 *
-		 * case 3) TODO I need to make sure that when permissions are added or removed
-		 * from a role, that change is reflected in the user_permissions table. So
-		 * for role that is add/remove permission
-		 */
-
-		// query for non-optimized 'can' for other packages :
-		// it's essentially two queries - one to look up roles, one to get permissions for those roles
-		// select * from permissions as Perm join pivot_roles_permissions as Pivot on Perm.slug=Pivot.permissions_slug where
-		// Pivot.roles_slug
-		//
-		// query for non-optimized 'can' for ours
-		//
-		// query for optimized can for ours
-
 		// todo - does this weed out wildcards?
 		SlugContainer::validateOrDie($roleSlug, 'slug');
 		$userId = $this->id;
 
+		/*
+		 * todo -
+		 * 1+2 is like is(). Can we just run that and cache roles?
+		 * 3-6 is remove role
+		 */
+		//
 		// 1) look up all the attached roles for the user
 		$roles = $this->getRoles();
 
@@ -235,7 +142,6 @@ trait Can {
 		return true;
 	}
 
-
 	/**
 	 * Permissions added directly on the user can only be removed using
 	 * detachPermission. Removing a role from the user that contains the
@@ -276,14 +182,13 @@ trait Can {
 
 	public function is($roles)
 	{
+		// todo - possibly refactor to use getRoles? then have detachRole use this?
 		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id);
 
 		$container = new SlugContainer($roles);
 		$query = $container->buildSlugQuery($query, 'roles_slug');
 
-		$hits = $query->distinct()->get();
-
-		return count($hits) > 0;
+		return count($query->get()) > 0;
 	}
 
 	public function can($permissions)
@@ -293,8 +198,7 @@ trait Can {
 		$container = new SlugContainer($permissions);
 		$query = $container->buildSlugQuery($query, 'permissions_slug');
 
-		$hits = $query->get();
-		return count($hits) > 0;
+		return count($query->get()) > 0;
 	}
 
 	public function getRoles()
@@ -309,20 +213,16 @@ trait Can {
 			'userId' => $this->id,
 		];
 
-		$raw = DB::table($roleTable)
+		$data = DB::table($roleTable)
 			->join($userRoleTable, function($query) use($queryParams) {
 				$query->on($queryParams['joinKeyFirst'], '=', $queryParams['joinKeySecond'])
 					->where($queryParams['userIdKey'], '=', $queryParams['userId']);
 			})
-			->get();
+			->get($roleTable.'.*');
 
-		$roles = [];
-		foreach($raw as $item)
-		{
-			$roles[] = new Role($item);
-		}
-
-		return $roles;
+		return array_map(function($v) {
+			return new Role($v);
+		}, $data);
 	}
 
 	public function getPermissions()
@@ -338,20 +238,14 @@ trait Can {
 		];
 
 		$data = DB::table($permissionTable)
-			->join($userPermissionTable,$queryParams['joinKeyFirst'],'=',$queryParams['joinKeySecond'])
-			//->join('pivot_users_permissions', function($query) use($queryParams) {
-			//	$query->on('permissions.slug', '=', 'pivot_users_permissions.slug')
-			//		->where('pivot_users_permissions.user_id', '=', $userId);
-			//})
-			->where($queryParams['userIdKey'],$queryParams['userId'])
-			->get();
+			->join($userPermissionTable, function($query) use($queryParams) {
+				$query->on($queryParams['joinKeyFirst'], '=', $queryParams['joinKeySecond'])
+					->where($queryParams['userIdKey'], '=', $queryParams['userId']);
+			})
+			->get($permissionTable.'.*');
 
-		$permissions = [];
-		foreach($data as $hit)
-		{
-			$permissions[] = new Permission($hit);
-		}
-
-		return $permissions;
+		return array_map(function($v) {
+			return new Permission($v);
+		}, $data);
 	}
 }
