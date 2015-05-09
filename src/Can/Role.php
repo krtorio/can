@@ -390,13 +390,14 @@ class Role {
 		$permissionTable = Config::get('can.permission_table');
 		$rolePermissionTable = Config::get('can.role_permission_table');
 		$joinKeyFirst = $permissionTable.'.slug';
-		$joinKeySecond = $rolePermissionTable.'permissions_slug';
-		$roleSlug = $rolePermissionTable.'roles_slug';
+		$joinKeySecond = $rolePermissionTable.'.permissions_slug';
+		$roleSlug = $rolePermissionTable.'.roles_slug';
+		$fields = $permissionTable.'.*';
 
 		$values = DB::table($permissionTable)
 			->join($rolePermissionTable,$joinKeyFirst, '=', $joinKeySecond)
 			->where($roleSlug,$this->slug)
-			->get(['permissions.*']);
+			->get([$fields]);
 
 		$permissions = [];
 		foreach($values as $v)

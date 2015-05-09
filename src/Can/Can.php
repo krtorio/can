@@ -105,7 +105,7 @@ trait Can {
 		// 4) get all the permission slugs for those roles
 		$rolePermissions = DB::table(Config::get('can.role_permission_table'))
 			->whereIn('roles_slug', $allRoleSlugs)
-			->get('permissions_slug', 'roles_slug');
+			->get(['permissions_slug', 'roles_slug']);
 
 		// 5) find the ones that should be removed. start with the permissions for the selected role, then
 		// remove any that also belong to other attached roles. Do this by reducing all the role permissions
@@ -219,7 +219,7 @@ trait Can {
 				$query->on($queryParams['joinKeyFirst'], '=', $queryParams['joinKeySecond'])
 					->where($queryParams['userIdKey'], '=', $queryParams['userId']);
 			})
-			->get($roleTable.'.*');
+			->get([$roleTable.'.*']);
 
 		return array_map(function($v) {
 			return new Role($v);
@@ -243,7 +243,7 @@ trait Can {
 				$query->on($queryParams['joinKeyFirst'], '=', $queryParams['joinKeySecond'])
 					->where($queryParams['userIdKey'], '=', $queryParams['userId']);
 			})
-			->get($permissionTable.'.*');
+			->get([$permissionTable.'.*']);
 
 		return array_map(function($v) {
 			return new Permission($v);
