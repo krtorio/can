@@ -402,7 +402,9 @@ class Role {
 		$permissions = [];
 		foreach($values as $v)
 		{
-			$permissions[] = new Permission(get_object_vars($v));
+			// because user can set db results to come back either way
+			$values = is_object($v) ? get_object_vars($v) : $v;
+			$permissions[] = new Permission($values);
 		}
 
 		return $permissions;
