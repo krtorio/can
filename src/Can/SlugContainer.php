@@ -21,6 +21,10 @@ class SlugContainer {
 		$this->raw = $raw;
 	}
 
+	/*
+	 * TODO Should have a separate validator...
+	 * TODO - need ability to detect and allow/disallow wildcards
+	 */
 	public static function validateOrDie($str, $strName, $placeholder = '')
 	{
 		if ( $placeholder === '' )

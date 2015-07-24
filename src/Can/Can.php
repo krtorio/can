@@ -9,6 +9,16 @@ use Illuminate\Support\Facades\Log;
 
 trait Can {
 
+	/*
+	 * A cache of the user's roles. Use <code>getRoles()</code> instead of accessing this variable.
+	 */
+	private $userRoles;
+
+	/**
+	 * A cache of the user's permissions. Use <code>getPermissions()</code> instead of accessing this variable.
+	 */
+	private $userPermissions;
+
 	/**
 	 * Accepts a single role slug, and attaches that role to the user. Does nothing
 	 * if the user is already attached to the role.
@@ -27,21 +37,20 @@ trait Can {
 
 		$timeStr = Carbon::now()->toDateTimeString();
 
-		// insert role relationship, composite key ensures exception for duplicate slug/id pairs
-		try {
-			DB::table(Config::get('can.user_role_table'))->insert([
-				'roles_slug' => $roleSlug,
-				'user_id' => $this->id,
-				'created_at' => $timeStr,
-				'updated_at' => $timeStr
-			]);
-		} catch(\Exception $e) {
-			// failure is usually going to be because the role was already added, so no need to barf.
-			Log::warning('Unable to attach role: '.$e->getMessage());
-			return false;
+		if($this->is($roleSlug))
+		{
+			return $role;
 		}
 
+		DB::table(Config::get('can.user_role_table'))->insert([
+			'roles_slug' => $roleSlug,
+			'user_id' => $this->id,
+			'created_at' => $timeStr,
+			'updated_at' => $timeStr
+		]);
+
 		$this->addPermissionsForRole($role, $timeStr);
+		$this->invalidateRoleCache();
 
 		return $role;
 	}
@@ -55,92 +64,104 @@ trait Can {
 	 */
 	protected function addPermissionsForRole(Role $role, $timeStr)
 	{
-		$currentPermissions = $this->getPermissions();
-		$rolePermissions = $role->getPermissions();
-		$newPermissions = array_diff($rolePermissions, $currentPermissions);
+		$newPermissions = $this->uniquePermissionsForRole($role);
 
-		$permData = array_map(function($v) use ($timeStr) {
-			return [
-				'permissions_slug' => $v->slug,
-				'user_id' => $this->id,
-				'created_at' => $timeStr,
-				'updated_at' => $timeStr
-			];
-		}, $newPermissions);
+		if(count($newPermissions))
+		{
+			$permData = array_map(function($v) use ($timeStr) {
+				return [
+					'permissions_slug' => $v->slug,
+					'user_id' => $this->id,
+					'created_at' => $timeStr,
+					'updated_at' => $timeStr
+				];
+			}, $newPermissions);
 
-		DB::table(Config::get('can.user_permission_table'))->insert($permData);
+			DB::table(Config::get('can.user_permission_table'))->insert($permData);
+			$this->invalidatePermissionCache();
+		}
 	}
 
+	/**
+	 * Detach a role from the user
+	 *
+	 * @param $roleSlug
+	 *
+	 * @return bool
+	 * @throws CanException
+	 */
 	public function detachRole($roleSlug)
 	{
 		// todo - does this weed out wildcards?
 		SlugContainer::validateOrDie($roleSlug, 'slug');
-		$userId = $this->id;
 
-		/*
-		 * todo -
-		 * 1+2 is like is(). Can we just run that and cache roles?
-		 * 3-6 is remove role
-		 */
-		//
-		// 1) look up all the attached roles for the user
-		$roles = $this->getRoles();
-
-		// 2) make sure the role to detach is among the attached roles
-		$allRoleSlugs = array_map(function($v) {
-			return $v->slug;
-		}, $roles);
+		// make sure the role to detach is among the attached roles
+		$allRoleSlugs = $this->slugsFor( $this->getRoles() );
 
 		if(!in_array($roleSlug, $allRoleSlugs, TRUE))
 		{
 			return false;
 		}
 
-		// 3) remove the role pivot entry
+		$this->doDetachRole($roleSlug);
+
+		$this->detachRolePermissions($roleSlug);
+
+		return true;
+	}
+
+
+	/**
+	 * returns an array of slugs given an array of Role or Permission objects
+	 *
+	 * @param array $rolesOrPermissions
+	 *
+	 * @return array
+	 */
+	protected function slugsFor(array $rolesOrPermissions)
+	{
+		// todo - move this to slugcontainer. Change slugcontainer into some
+		// other name.
+		return array_map(function($v) {
+			return $v->slug;
+		}, $rolesOrPermissions);
+	}
+
+	protected function doDetachRole($roleSlug)
+	{
 		DB::table(Config::get('can.user_role_table'))
 			->where('user_id', $this->id)
 			->where('roles_slug', $roleSlug)
 			->delete();
 
-		// 4) get all the permission slugs for those roles
-		$rolePermissions = DB::table(Config::get('can.role_permission_table'))
-			->whereIn('roles_slug', $allRoleSlugs)
-			->get(['permissions_slug', 'roles_slug']);
+		$this->invalidateRoleCache();
+	}
 
-		// 5) find the ones that should be removed. start with the permissions for the selected role, then
-		// remove any that also belong to other attached roles. Do this by reducing all the role permissions
-		// to slug array, then calling array_diff with the target role first.
 
-		$targetRolePerms = array_filter($rolePermissions, function($v) use($roleSlug) {
-			return $v->roles_slug === $roleSlug;
-		});
+	/**
+	 * Remove the permissions for a role from the user. Permissions that have been explicitly set
+	 * on the user and permissions that also belong to another of the user's role are not removed.
+	 *
+	 * @param $targetRoleSlug
+	 * @param $userRoleSlugs
+	 *
+	 * @throws CanException
+	 */
+	protected function detachRolePermissions($targetRoleSlug)
+	{
+		$targetRole = Role::single($targetRoleSlug);
+		$uniqueRolePermissions = $this->uniquePermissionsForRole($targetRole);
 
-		$targetRolePerms = array_map(function($v) { return $v->roles_slug; }, $targetRolePerms);
-
-		foreach($rolePermissions as $item)
+		// then delete what remains
+		if(count($uniqueRolePermissions) > 0)
 		{
-			if($item->roles_slug !== $roleSlug && in_array($item->permissions_slug, $targetRolePerms, TRUE))
-			{
-				delete($item->permissions_slug, $targetRolePerms);
-			}
-		}
+			DB::table(Config::get('can.user_permission_table'))
+				->where('user_id', $this->id)
+				->whereIn('permissions_slug',$uniqueRolePermissions)
+				->delete();
 
-		// 6) remove all the permissions from 5), minus any that have been explicitly set by attachPermissions
-		if(count($targetRolePerms) > 0)
-		{
-			$first = array_shift($targetRolePerms);
-			$query = DB::table(Config::get('can.user_permission_table'))->where('user_id', $this->id)->where('permissions_slug',$first);
-			foreach($targetRolePerms as $perm)
-			{
-				$slug = $perm->permissions_slug;
-				$query->orWhere(function($query) use($userId, $slug) {
-					$query->where('user_id', $userId)->where('permissions_slug', $slug);
-				});
-			}
-			$query->delete();
+			$this->invalidatePermissionCache();
 		}
-
-		return true;
 	}
 
 	/**
@@ -164,23 +185,50 @@ trait Can {
 				'permissions_slug' => $permissionSlug,
 				'added_on_user' => 1
 			]);
+
+			$this->invalidatePermissionCache();
+
 			return true;
 		}
 
 		return false;
 	}
 
+
+	/**
+	 * Detach a permission from the user. This can only be called for permissions that were set explicitly
+	 * on the user using <code>attachPermission()</code> and not for implicit permissions that are
+	 * inherited through one of the user's roles.
+	 *
+	 * @param $permissionSlug
+	 *
+	 * @return bool
+	 */
 	public function detachPermission($permissionSlug)
 	{
+		// todo - allow a comma-separated list?
 		$affected = DB::table(Config::get('can.user_permission_table'))
 			->where('user_id', $this->id)
 			->where('permissions_slug', $permissionSlug)
 			->where('added_on_user', 1)
 			->delete();
 
+		if($affected)
+		{
+			$this->invalidatePermissionCache();
+		}
+
 		return $affected > 0;
 	}
 
+
+	/**
+	 * Determine whether the user has a role matching the arguments
+	 *
+	 * @param $roles string|array Can be a single fully- or partially-qualified role, or a pipe-separated list of them
+	 *
+	 * @return bool
+	 */
 	public function is($roles)
 	{
 		// todo - possibly refactor to use getRoles? then have detachRole use this?
@@ -192,6 +240,14 @@ trait Can {
 		return count($query->get()) > 0;
 	}
 
+
+	/**
+	 * Determine whether the user has permissions matching the arguments
+	 *
+	 * @param $permissions Can be a single fully- or partially-qualified permission, or a pipe-separated list of them
+	 *
+	 * @return bool
+	 */
 	public function can($permissions)
 	{
 		$query = DB::table(Config::get('can.user_permission_table'))->where('user_id',$this->id);
@@ -202,8 +258,19 @@ trait Can {
 		return count($query->get()) > 0;
 	}
 
+
+	/**
+	 * Get the user's roles
+	 *
+	 * @return array
+	 */
 	public function getRoles()
 	{
+		if(!empty($this->userRoles))
+		{
+			return $this->userRoles;
+		}
+
 		$roleTable = Config::get('can.role_table');
 		$userRoleTable = Config::get('can.user_role_table');
 
@@ -221,13 +288,33 @@ trait Can {
 			})
 			->get([$roleTable.'.*']);
 
-		return array_map(function($v) {
+		$this->userRoles = array_map(function($v) {
 			return new Role($v);
 		}, $data);
+
+		return $this->userRoles;
 	}
 
-	public function getPermissions()
+	/**
+	 * Get the user's permissions. Valid filter values are :
+	 *
+	 * 'all' : get all permissions. This is the default
+	 * 'role' : get only permissions that user has through a role, and are not explicit
+	 * 'explicit' : get only the user's explicit permissions. These are permissions that have been directly set on the user.
+	 *
+	 * @param string $filter
+	 *
+	 * @return array
+	 */
+	public function getPermissions($filter='all')
 	{
+		// the permission cache contains all the user's permissions, and does not contain enough information
+		// to execute the 'role' or 'explicit' filters.
+		if($filter == 'all' && !empty($this->userPermissions))
+		{
+			return $this->userPermissions;
+		}
+
 		$permissionTable = Config::get('can.permission_table');
 		$userPermissionTable = Config::get('can.user_permission_table');
 
@@ -239,14 +326,77 @@ trait Can {
 		];
 
 		$data = DB::table($permissionTable)
-			->join($userPermissionTable, function($query) use($queryParams) {
+			->join($userPermissionTable, function($query) use($queryParams, $filter) {
 				$query->on($queryParams['joinKeyFirst'], '=', $queryParams['joinKeySecond'])
 					->where($queryParams['userIdKey'], '=', $queryParams['userId']);
+
+				if($filter == 'role')
+				{
+					$query->where('added_on_user', false);
+				} else if($filter == 'explicit') {
+					$query->where('added_on_user', true);
+				}
 			})
 			->get([$permissionTable.'.*']);
 
-		return array_map(function($v) {
+		$permissions = array_map(function($v) {
 			return new Permission($v);
 		}, $data);
+
+		if($filter == 'all')
+		{
+			$this->userPermissions = $permissions;
+		}
+
+		return $permissions;
 	}
+
+
+	/**
+	 * Returns the permissions associated with the provided role that are:
+	 * a) not provided by any other role that is currently attached to the user and
+	 * b) have not been explicitly set on the user
+	 *
+	 * @param $role
+	 *
+	 * @return array
+	 */
+	private function uniquePermissionsForRole(Role $role)
+	{
+		// 1) get role permissions
+		$rolePermissions = $role->getPermissions();
+		$rolePermissionSlugs = array_column($rolePermissions, 'slug');
+
+		// 2) get user roles, exluding the provided role if it's there
+		$userRoles = array_filter($this->getRoles(), function($currRole) use($role) {
+			return $currRole->slug !== $role->slug;
+		});
+		$userRoleSlugs = array_column($userRoles, 'slug');
+
+		// 3) get all permissions associated with user roles above
+		$rolePermissionTable = Config::get('can.role_permission_table');
+		$otherRolePermissions = DB::table($rolePermissionTable)->whereIn('roles_slug', $userRoleSlugs)->get();
+		$otherRolePermissionSlugs = array_column($otherRolePermissions, 'permissions_slug');
+
+		// 4) get all permissions that have been explicitly set on the user
+		$explicitPermissions = DB::table(Config::get('can.permission_table'))->where('added_on_user', 1)->get();
+		$explicitPermissionSlugs = array_column($explicitPermissions, 'permissions_slug');
+
+		// 5) all permission slugs not belonging to supplied permission
+		$excludedPermissionSlugs = array_merge($otherRolePermissionSlugs, $explicitPermissionSlugs);
+
+		// 6 diff
+		return array_diff($rolePermissionSlugs, $excludedPermissionSlugs);
+	}
+
+	private function invalidateRoleCache()
+	{
+		$this->userRoles = null;
+	}
+
+	private function invalidatePermissionCache()
+	{
+		$this->userPermissions = null;
+	}
+
 }

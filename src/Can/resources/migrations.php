@@ -45,7 +45,7 @@ class CreateCanTables extends Migration {
 		{
 			\$table->bigInteger('user_id');
 			\$table->string('permissions_slug', 255);
-			\$table->boolean('added_on_user');
+			\$table->boolean('added_on_user')->default(0);
 			\$table->timestamps();
 
 			\$table->primary(['user_id', 'permissions_slug']);
