@@ -276,7 +276,7 @@ trait Can {
 
 		$queryParams = [
 			'joinKeyFirst' => $roleTable.'.slug',
-			'joinKeySecond' => $userRoleTable.'.slug',
+			'joinKeySecond' => $userRoleTable.'.roles_slug',
 			'userIdKey' => $userRoleTable.'.user_id',
 			'userId' => $this->id,
 		];
@@ -288,8 +288,9 @@ trait Can {
 			})
 			->get([$roleTable.'.*']);
 
+		// todo - check results of last call - do we even need to map this?
 		$this->userRoles = array_map(function($v) {
-			return new Role($v);
+			return new Role($v->getAttributes());
 		}, $data);
 
 		return $this->userRoles;
