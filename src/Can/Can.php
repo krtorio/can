@@ -288,9 +288,8 @@ trait Can {
 			})
 			->get([$roleTable.'.*']);
 
-		// todo - check results of last call - do we even need to map this?
 		$this->userRoles = array_map(function($v) {
-			return new Role($v->getAttributes());
+			return new Role((array) $v);
 		}, $data);
 
 		return $this->userRoles;
@@ -380,7 +379,7 @@ trait Can {
 		$otherRolePermissionSlugs = array_column($otherRolePermissions, 'permissions_slug');
 
 		// 4) get all permissions that have been explicitly set on the user
-		$explicitPermissions = DB::table(Config::get('can.permission_table'))->where('added_on_user', 1)->get();
+		$explicitPermissions = DB::table(Config::get('can.user_permission_table'))->where('added_on_user', 1)->get();
 		$explicitPermissionSlugs = array_column($explicitPermissions, 'permissions_slug');
 
 		// 5) all permission slugs not belonging to supplied permission
