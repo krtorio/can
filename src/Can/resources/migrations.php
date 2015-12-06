@@ -39,7 +39,7 @@ class CreateCanTables extends Migration {
 			\$table->string('roles_slug', 255);
 			\$table->timestamps();
 
-			\$table->primary('user_id', 'roles_slug');
+			\$table->primary(['user_id', 'roles_slug']);
 		});
 		Schema::create('$userPermissionTable', function(Blueprint \$table)
 		{
