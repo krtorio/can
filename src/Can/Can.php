@@ -152,12 +152,16 @@ trait Can {
 		$targetRole = Role::single($targetRoleSlug);
 		$uniqueRolePermissions = $this->uniquePermissionsForRole($targetRole);
 
+		$uniqueSlugs = array_map(function($o) {
+			return $o->slug;
+		}, $uniqueRolePermissions);
+
 		// then delete what remains
 		if(count($uniqueRolePermissions) > 0)
 		{
 			DB::table(Config::get('can.user_permission_table'))
 				->where('user_id', $this->id)
-				->whereIn('permissions_slug',$uniqueRolePermissions)
+				->whereIn('permissions_slug',$uniqueSlugs)
 				->delete();
 
 			$this->invalidatePermissionCache();
@@ -386,7 +390,14 @@ trait Can {
 		$excludedPermissionSlugs = array_merge($otherRolePermissionSlugs, $explicitPermissionSlugs);
 
 		// 6 diff
-		return array_diff($rolePermissionSlugs, $excludedPermissionSlugs);
+		$uniqueSlugs = array_diff($rolePermissionSlugs, $excludedPermissionSlugs);
+
+		// 7 return objects corresponding to unique slugs
+		$perms = array_filter($rolePermissions, function($o) use($uniqueSlugs) {
+			return in_array($o->slug, $uniqueSlugs);
+		});
+
+		return $perms;
 	}
 
 	private function invalidateRoleCache()
