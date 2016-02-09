@@ -49,7 +49,7 @@ class CanServiceProvider extends ServiceProvider
 	 */
 	private function registerCommands()
 	{
-		$this->app->bindShared('command.can.migration', function ($app) {
+		$this->app->singleton('command.can.migration', function ($app) {
 			return new CanMigrationsCommand();
 		});
 	}
