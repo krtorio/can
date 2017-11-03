@@ -1,12 +1,12 @@
 {
-  "name": "jjharr/can",
+  "name": "krtorio/can",
   "description": "In development",
   "keywords": [],
   "license": "MIT",
   "authors": [
     {
-      "name": "Josh Harr",
-      "email": "josh@cornercanyonconsulting.com"
+      "name": "Karlo Torio",
+      "email": "krtorio@gmail.com"
     }
   ],
   "require": {
