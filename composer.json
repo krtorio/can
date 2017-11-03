@@ -23,7 +23,7 @@
   },
   "autoload": {
     "psr-4": {
-      "krtorio\\Can\\": "src/Can"
+      "jjharr\\Can\\": "src/Can"
     }
   },
   "extra": {
